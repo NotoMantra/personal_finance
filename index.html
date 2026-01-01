@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>PFOS · Dashboard</title>
+  <link rel="stylesheet" href="./assets/theme.css"/>
+</head>
+<body>
+  <div class="container">
+    <div class="widget">
+      <div class="topbar">
+        <div class="title">PFOS Dashboard</div>
+        <div class="controls">
+          <div class="control">
+            <label>Month</label>
+            <select id="month"></select>
+          </div>
+
+          <div class="control">
+            <label>Currency</label>
+            <select id="currency">
+              <option value="USD">USD</option>
+              <option value="EUR">EUR</option>
+              <option value="GBP">GBP</option>
+              <option value="INR">INR</option>
+            </select>
+          </div>
+
+          <button class="btn primary" id="add">+ Add transaction</button>
+          <a class="btn" href="./transactions/">Transactions</a>
+          <a class="btn" href="./budgets/">Budgets</a>
+        </div>
+      </div>
+
+      <div class="grid kpis">
+        <div class="card">
+          <div class="label"><span>Net Cashflow</span><span class="badge">MTD</span></div>
+          <div class="value" id="k_net">—</div>
+          <div class="subrow">
+            <span id="d_net" class="chip">—</span>
+            <canvas class="spark" id="s_net"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label"><span>Total Expense</span><span class="badge">MTD</span></div>
+          <div class="value" id="k_exp">—</div>
+          <div class="subrow">
+            <span id="d_exp" class="chip">—</span>
+            <canvas class="spark" id="s_exp"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label"><span>Total Income</span><span class="badge">MTD</span></div>
+          <div class="value" id="k_inc">—</div>
+          <div class="subrow">
+            <span id="d_inc" class="chip">—</span>
+            <canvas class="spark" id="s_inc"></canvas>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="label"><span>Savings Rate</span><span class="badge">MTD</span></div>
+          <div class="value" id="k_sr">—</div>
+          <div class="subrow">
+            <span id="d_sr" class="chip">—</span>
+            <canvas class="spark" id="s_sr"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="twocol">
+        <div class="block">
+          <h3>This month trend (weekly)</h3>
+          <div class="canvasWrap"><canvas id="trend"></canvas></div>
+          <div style="display:flex; gap:10px; margin-top:10px; color: rgba(234,241,255,.62); font-size:12px">
+            <span class="pill dot" style="--dot:var(--accent)">Income</span>
+            <span class="pill dot" style="--dot:var(--bad)">Expense</span>
+          </div>
+        </div>
+
+        <div class="block">
+          <h3>Top categories (expense)</h3>
+          <div id="cats"></div>
+        </div>
+      </div>
+
+      <div class="block" style="margin:0 16px 16px">
+        <h3>Recent transactions (this month)</h3>
+        <div class="tableWrap" style="padding:0; margin-top:10px">
+          <table class="table">
+            <thead>
+              <tr>
+                <th style="width:110px">Date</th>
+                <th>Description</th>
+                <th style="width:140px">Category</th>
+                <th style="width:120px">Type</th>
+                <th class="right" style="width:140px">Amount</th>
+              </tr>
+            </thead>
+            <tbody id="recent"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="footerNote">Local-only. Data is stored in your browser for this site.</div>
+    </div>
+  </div>
+
+  <div class="drawer" id="drawer">
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+      <h2>Add transaction</h2>
+      <button class="btn small" id="close">Close</button>
+    </div>
+    <div class="sep"></div>
+
+    <div class="field">
+      <div class="lbl">Date</div>
+      <input id="f_date" type="date"/>
+    </div>
+
+    <div class="formRow">
+      <div class="field">
+        <div class="lbl">Type</div>
+        <select id="f_type">
+          <option>Expense</option>
+          <option>Income</option>
+          <option>Transfer</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="lbl">Amount</div>
+        <input id="f_amount" type="number" step="1" min="0"/>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="lbl">Description</div>
+      <input id="f_desc" type="text" placeholder="e.g., Groceries, Salary..."/>
+    </div>
+
+    <div class="formRow">
+      <div class="field">
+        <div class="lbl">Category</div>
+        <select id="f_cat"></select>
+      </div>
+      <div class="field">
+        <div class="lbl">Account</div>
+        <select id="f_acc"></select>
+      </div>
+    </div>
+
+    <div class="field">
+      <div class="lbl">Notes (optional)</div>
+      <input id="f_note" type="text" placeholder="optional"/>
+    </div>
+
+    <div class="sep"></div>
+    <div style="display:flex; justify-content:flex-end; gap:10px">
+      <button class="btn" id="cancel">Cancel</button>
+      <button class="btn primary" id="save">Save</button>
+    </div>
+  </div>
+
+<script type="module">
+  import { thisMonth, prevMonth, fmtINR, pct, todayISO, drawSpark, drawLines } from "./assets/utils.js";
+  import { getSettings, setSettings, seedIfEmpty, listTransactionsByMonth, upsertTransaction, summarize, categoryTotals, weeklySeries, onChanged } from "./assets/state.js";
+
+  const profile = "default";
+  const monthSel = document.getElementById("month");
+  const currencySel = document.getElementById("currency");
+  const recentBody = document.getElementById("recent");
+
+  const drawer = document.getElementById("drawer");
+  const addBtn = document.getElementById("add");
+  const closeBtn = document.getElementById("close");
+  const cancelBtn = document.getElementById("cancel");
+  const saveBtn = document.getElementById("save");
+
+  const f_date = document.getElementById("f_date");
+  const f_type = document.getElementById("f_type");
+  const f_amount = document.getElementById("f_amount");
+  const f_desc = document.getElementById("f_desc");
+  const f_cat = document.getElementById("f_cat");
+  const f_acc = document.getElementById("f_acc");
+  const f_note = document.getElementById("f_note");
+
+  function buildMonthOptions(){
+    const now = new Date();
+    const months = [];
+    for(let i=0;i<18;i++){
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+      months.push(ym);
+    }
+    monthSel.innerHTML = months.map(m=>`<option value="${m}">${m}</option>`).join("");
+  }
+
+  function pctChip(el, p){
+    el.classList.remove("good","bad","warn");
+    if(p === null){ el.textContent = "—"; return; }
+    const v = Math.round(p);
+    el.textContent = (v>0?`+${v}%`:`${v}%`) + " vs last month";
+    el.classList.add(v>=0 ? "good":"bad");
+  }
+
+  function buildCatBars(list, currency){
+    if(!list.length){
+      return `<div style="color:rgba(234,241,255,.60); font-size:13px">No expenses yet.</div>`;
+    }
+    const max = Math.max(...list.map(x=>x.amount)) || 1;
+    return list.map(x=>{
+      const w = Math.round((x.amount/max)*100);
+      return `
+        <div style="display:flex; align-items:center; gap:10px; margin: 10px 0">
+          <div style="flex:1; min-width:0">
+            <div style="display:flex; justify-content:space-between; gap:10px">
+              <div style="font-size:13px; color:rgba(234,241,255,.88); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${x.category}</div>
+              <div class="mono" style="font-size:13px">${fmtINR(x.amount, currency)}</div>
+            </div>
+            <div class="progress" style="margin-top:8px"><div style="width:${w}%;"></div></div>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, (c)=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+
+  function openDrawer(){
+    drawer.classList.add("open");
+    f_date.value = todayISO();
+    f_type.value = "Expense";
+    f_amount.value = "";
+    f_desc.value = "";
+    f_note.value = "";
+  }
+  function closeDrawer(){ drawer.classList.remove("open"); }
+
+  async function render(){
+    const ym = monthSel.value;
+    const settings = await getSettings(profile);
+    const currency = settings.currency || "USD";
+    currencySel.value = currency;
+
+    // populate quick add selects
+    f_cat.innerHTML = (settings.categories||[]).map(c=>`<option>${c}</option>`).join("");
+    f_acc.innerHTML = (settings.accounts||[]).map(a=>`<option>${a}</option>`).join("");
+    if(!f_cat.value) f_cat.value = (settings.categories||[])[0] || "Groceries";
+    if(!f_acc.value) f_acc.value = (settings.accounts||[])[0] || "Bank";
+
+    const txThis = await listTransactionsByMonth(profile, ym);
+    const txPrev = await listTransactionsByMonth(profile, prevMonth(ym));
+
+    const a = summarize(txThis);
+    const b = summarize(txPrev);
+
+    document.getElementById("k_net").textContent = fmtINR(a.net, currency);
+    document.getElementById("k_exp").textContent = fmtINR(a.expense, currency);
+    document.getElementById("k_inc").textContent = fmtINR(a.income, currency);
+
+    const sr = (a.income>0) ? ((a.income-a.expense)/a.income)*100 : null;
+    document.getElementById("k_sr").textContent = (sr===null) ? "—" : `${Math.round(sr)}%`;
+
+    pctChip(document.getElementById("d_net"), pct(a.net, b.net));
+    pctChip(document.getElementById("d_exp"), pct(a.expense, b.expense));
+    pctChip(document.getElementById("d_inc"), pct(a.income, b.income));
+    pctChip(document.getElementById("d_sr"), (sr===null) ? null : sr - (((b.income>0)?((b.income-b.expense)/b.income)*100:sr)));
+
+    const w = weeklySeries(txThis, ym);
+    drawSpark(document.getElementById("s_exp"), w.expense);
+    drawSpark(document.getElementById("s_inc"), w.income);
+    drawSpark(document.getElementById("s_net"), w.income.map((v,i)=> v - w.expense[i]));
+    drawSpark(document.getElementById("s_sr"), w.income.map((v,i)=>{
+      const inc=v, exp=w.expense[i];
+      return inc>0 ? ((inc-exp)/inc)*100 : 0;
+    }));
+
+    drawLines(document.getElementById("trend"), w.income, w.expense);
+    document.getElementById("cats").innerHTML = buildCatBars(categoryTotals(txThis, 6), currency);
+
+    const recent = txThis.slice(0,6);
+    if(recent.length === 0){
+      recentBody.innerHTML = `<tr><td colspan="5" style="color:rgba(234,241,255,.60); padding:16px">No transactions in this month yet. Click “+ Add transaction”.</td></tr>`;
+    }else{
+      recentBody.innerHTML = recent.map(t=>`
+        <tr>
+          <td class="mono">${t.date}</td>
+          <td>${escapeHtml(t.desc||"")}</td>
+          <td><span class="pill">${escapeHtml(t.category||"")}</span></td>
+          <td>${escapeHtml(t.type||"")}</td>
+          <td class="right mono">${fmtINR(t.amount||0, currency)}</td>
+        </tr>
+      `).join("");
+    }
+  }
+
+  addBtn.onclick = openDrawer;
+  closeBtn.onclick = closeDrawer;
+  cancelBtn.onclick = closeDrawer;
+
+  saveBtn.onclick = async ()=>{
+    const tx = {
+      date: f_date.value,
+      type: f_type.value,
+      amount: Number(f_amount.value || 0),
+      desc: f_desc.value,
+      category: f_cat.value,
+      account: f_acc.value,
+      note: f_note.value
+    };
+    if(!tx.date || !tx.desc || !tx.amount){
+      alert("Date, description, and amount are required.");
+      return;
+    }
+    await upsertTransaction(profile, tx);
+    closeDrawer();
+    render();
+  };
+
+  currencySel.addEventListener("change", async ()=>{
+    const s = await getSettings(profile);
+    s.currency = currencySel.value;
+    await setSettings(profile, s);
+    render();
+  });
+
+  buildMonthOptions();
+  monthSel.value = thisMonth();
+  monthSel.addEventListener("change", ()=> render());
+  monthSel.addEventListener("input", ()=> render());
+
+  (async ()=>{
+    await seedIfEmpty(profile); // seeds only once when DB is empty
+    await render();
+  })();
+
+  onChanged((ev)=>{
+    if(ev.scope === "transactions" || ev.scope === "settings") render();
+  });
+</script>
+</body>
+</html>
