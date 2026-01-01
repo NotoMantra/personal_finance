@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>PFOS Widgets</title>
+  <link rel="stylesheet" href="./assets/theme.css"/>
+</head>
+<body>
+  <div class="container">
+    <div class="widget">
+      <div class="topbar">
+        <div class="title">PFOS Widgets (Local-only)</div>
+        <div class="controls">
+          <a class="btn primary" href="./kpi/">Open KPI Dashboard</a>
+          <a class="btn" href="./transactions/">Open Transactions</a>
+          <a class="btn" href="./budgets/">Open Budgets</a>
+        </div>
+      </div>
+      <div class="grid" style="padding:16px">
+        <div class="block">
+          <h3>How to use in Notion</h3>
+          <div style="font-size:13px; color: rgba(234,241,255,.80); line-height:1.6">
+            1) Host this repo on GitHub Pages.<br/>
+            2) Copy any widget URL (e.g., <span class="mono">.../kpi/</span>).<br/>
+            3) In Notion → <span class="mono">/embed</span> → paste the URL.<br/><br/>
+            Data is stored in your browser (IndexedDB). No accounts, no backend.
+          </div>
+        </div>
+
+        <div class="block">
+          <h3>Quick start</h3>
+          <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <button id="seed" class="btn primary">Load demo data</button>
+            <button id="wipe" class="btn danger">Reset local data</button>
+          </div>
+          <div style="margin-top:10px; font-size:11px; color: rgba(234,241,255,.55)">
+            Reset clears local storage for this site only.
+          </div>
+        </div>
+      </div>
+      <div class="footerNote">Runs locally. No server-side storage. If you clear site data, your data will reset.</div>
+    </div>
+  </div>
+
+<script type="module">
+  import { seedIfEmpty } from "./assets/state.js";
+
+  document.getElementById("seed").onclick = async ()=>{
+    await seedIfEmpty("default");
+    alert("Demo data ready. Open KPI Dashboard / Transactions / Budgets.");
+  };
+
+  document.getElementById("wipe").onclick = async ()=>{
+    if(!confirm("This will delete all local PFOS data for this site. Continue?")) return;
+    indexedDB.deleteDatabase("pfos");
+    localStorage.clear();
+    location.reload();
+  };
+</script>
+</body>
+</html>
